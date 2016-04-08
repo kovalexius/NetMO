@@ -91,9 +91,9 @@ namespace std
         
         void lock()
         {
-            //no_writers.lock();
+            no_writers.lock();
             no_readers.lock();
-            //no_writers.unlock();
+            no_writers.unlock();
         }
         
         bool try_lock()
@@ -108,14 +108,14 @@ namespace std
         
         void lock_shared()
         {
-            //no_writers.lock();
+            no_writers.lock();
             counter_mutex.lock();
-            int prev = nreaders;
+            int prev = nreaders; // with local variable cache it works with best performance
             nreaders++;
             if( prev == 0 )
                 no_readers.lock();
             counter_mutex.unlock();
-            //no_writers.unlock();
+            no_writers.unlock();
         }
         
         bool try_lock_shared()
@@ -127,15 +127,15 @@ namespace std
         {
             counter_mutex.lock();
             nreaders--;
-            int current = nreaders;
+            int current = nreaders; // with local variable cache it works with best performance
             if(current == 0)
                 no_readers.unlock();
             counter_mutex.unlock();
         }
     private:
-        std::mutex no_writers;
-        std::mutex no_readers;
-        std::mutex counter_mutex;
+        std::mutex no_writers;      // if writer in, no one new reader allowed, long reading non-actual data is absurd
+        std::mutex no_readers;      // common mutex
+        std::mutex counter_mutex;   // mutex for counter and counter check
         
         int nreaders;
     };

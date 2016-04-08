@@ -21,7 +21,7 @@ static std::atomic<bool> is_run_progress(true);
 
 void writeXyulo()
 {
-    std::string str;
+    //std::string str;
     for( int i = 0; i < 1000; i++ )
     {
         mut.lock();
@@ -38,7 +38,7 @@ void writeXyulo()
 
 void writeBlyad()
 {
-    std::string str;
+    //std::string str;
     for( int i = 0; i < 1000; i++ )
     {
         mut.lock();
@@ -55,8 +55,8 @@ void writeBlyad()
 
 void reader()
 {
-    std::string str("Gusto");
-    std::set<std::string> result;
+    //std::string str("Gusto");
+    //std::set<std::string> result;
     for( int i = 0; i < 1000; i++ )
     {
         mut.lock_shared();
@@ -87,9 +87,9 @@ void test_sh_mutex()
     
     for( int i = 0; i < 500; i++ )
         ths.push_back( std::thread(reader) );
-    for( int j = 0; j < 10; j++ )
+    for( int j = 0; j < 20; j++ )
         ths.push_back( std::thread(writeXyulo) );
-    for( int k = 0; k < 10; k++ )
+    for( int k = 0; k < 20; k++ )
         ths.push_back( std::thread(writeBlyad) );
     for( int i = 0; i < ths.size(); i++ )
         ths[i].join();
