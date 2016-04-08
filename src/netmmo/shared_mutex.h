@@ -5,27 +5,23 @@
 #include <atomic>
 #include <condition_variable>
 
+#include "spinlock.h"
+
 namespace std
 {
-#define BLOCKING_OBJECT
+#define BLOCKING_OBJECT_IMPROVED
     
 #ifdef LOCK_FREE
     class shared_mutex
     {
     public:
-        shared_mutex() : m_shared_number(0),
-                         m_is_lock(false)
+        shared_mutex() : nreaders(0),
+                         iswait(false)
         {}
         
         void lock()
         {
-            m_is_lock.store( true );
-            if( m_shared_number.load() > 0 )
-            {
-                std::unique_lock<std::mutex> lk(mut);
-                cond_var.wait(lk);
-               
-            }
+            sp_wr.lock();
             mut.lock();
         }
         
@@ -36,22 +32,26 @@ namespace std
         
         void unlock()
         {
-            m_is_lock.store( false );
-            cond_var.notify_all();
+            if( iswait.exchange(false) )
+                cond_var.notify_all();
+            sp_wr.unlock();
             mut.unlock();
         }
         
         void lock_shared()
         {
-            if( m_is_lock )
+            if( sp_wr.lock() )
             {
-                std::unique_lock<std::mutex> lk(mut);
-                cond_var.wait(lk);
+                nreaders++;
+                if( nreaders == 1 )
+                    mut.lock();
+                sp_wr.unlock();
             }
             else
             {
-                m_shared_number++;
-                mut.try_lock();
+                iswait.store(true);
+                std::unique_lock<std::mutex> lk( notify );
+                cond_var.wait(lk);
             }
         }
         
@@ -62,25 +62,25 @@ namespace std
         
         void unlock_shared()
         {
-            m_shared_number--;
-            if( m_shared_number.load() < 1 )
+            if( sp_wr.lock() )
             {
-                cond_var.notify_all();
+                nreaders--;
+                sp_wr.unlock();
                 mut.unlock();
             }
         }
         
     private:
-        // Cколько раз вызван lock_shared()
-        std::atomic<int> m_shared_number;
-        
-        // вызван ли lock(), если true, - блокировать вызовы lock_shared() 
-        std::atomic<bool> m_is_lock;
-        
-        std::condition_variable cond_var;
         std::mutex mut;
+        std::mutex notify;
+        lf::spinlock sp_wr;
+        std::condition_variable cond_var;
+        int nreaders;
+        std::atomic<bool> iswait;
     };
 #endif
+    
+    
     
 #ifdef BLOCKING_OBJECT
     class shared_mutex
@@ -98,7 +98,14 @@ namespace std
         
         bool try_lock()
         {
-            return true;
+            bool result = false;
+            if( no_writers.try_lock() )
+            {
+                result = no_readers.try_lock();
+                no_writers.unlock();
+            }
+            
+            return result;
         }
         
         void unlock()
@@ -110,7 +117,7 @@ namespace std
         {
             no_writers.lock();
             counter_mutex.lock();
-            int prev = nreaders; // with local variable cache it works with best performance
+            int prev = nreaders; // with local variable caching it works with best performance; Why?
             nreaders++;
             if( prev == 0 )
                 no_readers.lock();
@@ -120,22 +127,140 @@ namespace std
         
         bool try_lock_shared()
         {
-            return true;
+            bool result = false;
+            
+            if( no_writers.try_lock() )
+            {
+                if( counter_mutex.try_lock() )
+                {
+                    int prev = nreaders; // with local variable caching it works with best performance; Why?
+                    nreaders++;
+                    if( prev == 0 )
+                        result = no_readers.try_lock();
+                    else
+                        result = true;
+                    counter_mutex.unlock();
+                }
+                no_writers.unlock();
+            }
+            
+            return result;
         }
         
         void unlock_shared()
         {
             counter_mutex.lock();
             nreaders--;
-            int current = nreaders; // with local variable cache it works with best performance
+            int current = nreaders; // with local variable cache it works with best performance; How?
             if(current == 0)
                 no_readers.unlock();
             counter_mutex.unlock();
         }
     private:
-        std::mutex no_writers;      // if writer in, no one new reader allowed, long reading non-actual data is absurd
+        std::mutex no_writers;      // if writer come in, no one new reader allowed, long reading non-actual data is absurd
         std::mutex no_readers;      // common mutex
         std::mutex counter_mutex;   // mutex for counter and counter check
+        
+        int nreaders;
+    };
+#endif
+    
+    
+    
+#ifdef BLOCKING_OBJECT_IMPROVED
+    class shared_mutex
+    {
+    public:
+        shared_mutex(): iswrite(false),
+                        nreaders(0)
+        {}
+        
+        void lock()
+        {
+            no_writers.lock();
+            iswrite.store(true);
+            no_readers.lock();
+            no_writers.unlock();
+        }
+        
+        bool try_lock()
+        {
+            bool result = false;
+            if( no_writers.try_lock() )
+            {
+                result = no_readers.try_lock();
+                no_writers.unlock();
+            }
+            
+            return result;
+        }
+        
+        void unlock()
+        {
+            no_readers.unlock();
+            iswrite.store(false);
+        }
+        
+        void lock_shared()
+        {
+            if( iswrite.load() )
+            {
+                no_writers.lock();
+                counter_mutex.lock();
+                int prev = nreaders; // with local variable caching it works with best performance; Why?
+                nreaders++;
+                if( prev == 0 )
+                    no_readers.lock();
+                counter_mutex.unlock();
+                no_writers.unlock();
+            }
+            else
+            {
+                counter_mutex.lock();
+                int prev = nreaders; // with local variable caching it works with best performance; Why?
+                nreaders++;
+                if( prev == 0 )
+                    no_readers.lock();
+                counter_mutex.unlock();
+            }
+        }
+        
+        bool try_lock_shared()
+        {
+            bool result = false;
+            
+            if( no_writers.try_lock() )
+            {
+                if( counter_mutex.try_lock() )
+                {
+                    int prev = nreaders; // with local variable caching it works with best performance; Why?
+                    nreaders++;
+                    if( prev == 0 )
+                        result = no_readers.try_lock();
+                    else
+                        result = true;
+                    counter_mutex.unlock();
+                }
+                no_writers.unlock();
+            }
+            
+            return result;
+        }
+        
+        void unlock_shared()
+        {
+            counter_mutex.lock();
+            nreaders--;
+            int current = nreaders; // with local variable cache it works with best performance; How?
+            if(current == 0)
+                no_readers.unlock();
+            counter_mutex.unlock();
+        }
+    private:
+        std::mutex no_writers;      // if writer come in, no one new reader allowed, long reading non-actual data is absurd
+        std::mutex no_readers;      // common mutex
+        std::mutex counter_mutex;   // mutex for counter and counter check
+        std::atomic<bool> iswrite;
         
         int nreaders;
     };
