@@ -26,8 +26,6 @@ elseif(MSVC)
         )
 endif()
 
-configure_file( ./delete_ip_link.sh ${CMAKE_CURRENT_BINARY_DIR}/delete_ip_link.sh COPYONLY )
-configure_file( ./make_ip_link.sh ${CMAKE_CURRENT_BINARY_DIR}/make_ip_link.sh COPYONLY )
 
 ## testnet module
 add_executable( testnet
@@ -58,31 +56,13 @@ endif()
 add_executable( getip
                 src/getip.cpp
               )
-
-              
+           
 #echoserver module
 add_executable( echoserver
-                src/tests/echoserver/echoserver.cpp
+                src/tests/echoserver.cpp
               )
-include_directories(    ./ 
-                        ./src/netmmo/
-                   )  
 if(CMAKE_COMPILER_IS_GNUCXX)
     target_link_libraries( echoserver netmmo "-pthread")
 elseif(MSVC)
     target_link_libraries( echoserver netmmo ws2_32 )
-endif()
-
-
-#echoclient module
-add_executable( echoclient
-                src/tests/echoserver/echoclient.cpp
-              )
-include_directories(    ./ 
-                        ./src/netmmo/
-                   )  
-if(CMAKE_COMPILER_IS_GNUCXX)
-    target_link_libraries( echoclient netmmo "-pthread")
-elseif(MSVC)
-    target_link_libraries( echoclient netmmo ws2_32 )
 endif()

@@ -14,14 +14,15 @@ namespace std
 #ifdef LOCK_FREE
     class shared_mutex
     {
+        shared_mutex( const shared_mutex& ) = delete;
     public:
-        shared_mutex() : nreaders(0),
-                         iswait(false)
+        shared_mutex() :
+                         wr_lock(false)
         {}
         
         void lock()
         {
-            sp_wr.lock();
+            wr_lock.store( true );
             mut.lock();
         }
         
@@ -32,27 +33,17 @@ namespace std
         
         void unlock()
         {
-            if( iswait.exchange(false) )
-                cond_var.notify_all();
-            sp_wr.unlock();
+            wr_lock.store( false );
             mut.unlock();
         }
         
         void lock_shared()
         {
-            if( sp_wr.lock() )
-            {
-                nreaders++;
-                if( nreaders == 1 )
-                    mut.lock();
-                sp_wr.unlock();
-            }
+            // поставить защиту от двойного захвата одним потоком
+            if( wr_lock.load() )
+                mut.lock();
             else
-            {
-                iswait.store(true);
-                std::unique_lock<std::mutex> lk( notify );
-                cond_var.wait(lk);
-            }
+                mut.try_lock();
         }
         
         bool try_lock_shared()
@@ -62,21 +53,12 @@ namespace std
         
         void unlock_shared()
         {
-            if( sp_wr.lock() )
-            {
-                nreaders--;
-                sp_wr.unlock();
-                mut.unlock();
-            }
+            mut.unlock();
         }
         
     private:
         std::mutex mut;
-        std::mutex notify;
-        lf::spinlock sp_wr;
-        std::condition_variable cond_var;
-        int nreaders;
-        std::atomic<bool> iswait;
+        std::atomic<bool> wr_lock;
     };
 #endif
     
@@ -85,6 +67,7 @@ namespace std
 #ifdef BLOCKING_OBJECT
     class shared_mutex
     {
+        shared_mutex( const shared_mutex& ) = delete;
     public:
         shared_mutex(): nreaders(0)
         {}
@@ -170,6 +153,7 @@ namespace std
 #ifdef BLOCKING_OBJECT_IMPROVED
     class shared_mutex
     {
+        shared_mutex( const shared_mutex& ) = delete;
     public:
         shared_mutex(): iswrite(false),
                         nreaders(0)
@@ -188,6 +172,7 @@ namespace std
             bool result = false;
             if( no_writers.try_lock() )
             {
+                iswrite.store(true);
                 result = no_readers.try_lock();
                 no_writers.unlock();
             }
@@ -227,8 +212,10 @@ namespace std
         
         bool try_lock_shared()
         {
-            bool result = false;
+            if( iswrite.load() )
+                return false;
             
+            bool result = false;
             if( no_writers.try_lock() )
             {
                 if( counter_mutex.try_lock() )
@@ -266,6 +253,27 @@ namespace std
     };
 #endif
     
+#ifdef PLATFORM_SPECIFIC
+    //pthread_rwlock_init
+#endif
+    
+    template< class Mutex >
+    class shared_lock
+    {
+    public:
+        shared_lock( Mutex& m ): mutex(std::ref(m))
+        {
+            mutex.lock_shared();
+        }
+        
+        ~shared_lock()
+        {
+            mutex.unlock_shared();
+        }
+        
+    private:
+        Mutex &mutex;
+    };
 }
 
 #endif
