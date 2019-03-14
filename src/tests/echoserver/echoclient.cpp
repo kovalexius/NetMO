@@ -23,8 +23,8 @@ int main(int argc, char* argv[])
     std::string eth_name;
     std::string eth_addr;
     std::string dst_addr;
-    int32_t port = 23;
-    int32_t dst_port;
+    std::string port;
+    std::string dst_port;
     
     while( (opt = getopt(argc, argv, "a:i:p:d:t:h")) != -1 )
     {
@@ -37,10 +37,10 @@ int main(int argc, char* argv[])
                 eth_addr = std::string(optarg);
                 break;
             case 'p':
-                port = atoi(optarg);
+                port = std::string(optarg);
                 break;
             case 'd':
-                dst_port = atoi(optarg);
+                dst_port = std::string(optarg);
                 break;
             case 't':
                 dst_addr = std::string(optarg);
@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
         net_client.subscribe_on_error(
                                         [&net_client] (mmo::CONNECT_ERROR error, const int id)
                                         {
-                                            std::cout << "coonnect was not established with peer: " << id << std::endl;
+                                            std::cout << "connect was not established with peer: " << id << std::endl;
                                         }
         );
         net_client.subscribe_on_data( []( const int& id_abonent, const std::string& message )

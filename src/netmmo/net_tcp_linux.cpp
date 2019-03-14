@@ -34,14 +34,17 @@ static inline int create_tcp_socket()
     if( (proto = ::getprotobyname("tcp")) == nullptr )
         throw std::string("Tcp protocol doesn't supproted");
     int sfd;
-    if( (sfd = ::socket( AF_INET, SOCK_STREAM, proto->p_proto )) == -1 )
+	//if( (sfd = ::socket( AF_INET, SOCK_STREAM, proto->p_proto )) == -1 )
+    if( (sfd = ::socket( AF_INET, SOCK_STREAM|O_NONBLOCK, proto->p_proto )) == -1 )
         throw std::string("Couldn't create connection: new socket doesn't created");
 
+	/*
     int flags = ::fcntl (sfd, F_GETFL, 0);
     if (flags == -1)
         throw std::string("Couldn't take socket flags");
     if( ::fcntl(sfd, F_SETFL, flags|O_NONBLOCK) == -1 )
         throw std::string("Couldn't make socket nonblocked");
+	*/
     
     return sfd;
 }
@@ -56,40 +59,43 @@ static inline void bind( const int sfd, sockaddr_in &bind_addr )
 }
 
 static inline void bind_to_interface( const int sfd, 
-                                      const std::string &iface_addr, 
-                                      const std::string &iface_name, 
-                                      const uint32_t iface_port = INADDR_ANY )
+                                      const std::string& iface_addr, 
+                                      const std::string& iface_name, 
+                                      const std::string& iface_port)
 {
     sockaddr_in bind_addr;
     memset( &bind_addr, 0, sizeof(bind_addr) );
     bind_addr.sin_family = AF_INET;
 
-    int res_aton = inet_aton( iface_addr.c_str(), &(bind_addr.sin_addr) );
-    if( res_aton == 0 )
-        bind_addr.sin_addr.s_addr = INADDR_ANY;
+	if(!iface_addr.empty())
+	{
+		if(0 == inet_aton(iface_addr.c_str(), &(bind_addr.sin_addr)))
+		{
+			std::cout << std::string("Invalid interface address. Bind to any address") << std::endl;
+			bind_addr.sin_addr.s_addr = INADDR_ANY;
+		}
+	}
     
-    bind_addr.sin_port = htons( iface_port );
-    
-    int on = 1;
-    setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR,
-               reinterpret_cast<void *>(&on), sizeof(int));
+    if(!iface_port.empty())
+		bind_addr.sin_port = htons(std::atoi(iface_port.c_str()));
     
     // Second layer bind to interface
     int res_devbind = 0;
-    if( !iface_name.empty() )
+    if(!iface_name.empty())
     {
-        res_devbind = ::setsockopt( sfd, SOL_SOCKET, SO_BINDTODEVICE,  iface_name.data(), iface_name.size() );
-        if( res_devbind != 0 )      
+		int on = 1;
+		setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR,
+               reinterpret_cast<void *>(&on), sizeof(int));
+		
+        res_devbind = ::setsockopt(sfd, SOL_SOCKET, SO_BINDTODEVICE,  iface_name.data(), iface_name.size());
+        if(res_devbind != 0)      
             std::cout << "Failed to set SO_BINDTODEVICE sockopt. errno = " << errno << std::endl;
     }
     
-    bind( sfd, bind_addr );
-    
-    if( res_aton == 0 )
-        throw std::string("Invalid interface address. Bind to any address");  
+    bind(sfd, bind_addr);
 }
 
-static inline void connect_to_destination(const int sfd, const std::string& dest_address, const uint16_t dest_port )
+static inline void connect_to_destination(const int sfd, const std::string& dest_address, const std::string& dest_port )
 {
     // connecting to destination
     struct sockaddr_in dest_addr;
@@ -97,9 +103,10 @@ static inline void connect_to_destination(const int sfd, const std::string& dest
     dest_addr.sin_family = AF_INET;
     if( ::inet_aton(dest_address.c_str(), &(dest_addr.sin_addr) ) == 0 )
         throw std::string(strerror(errno));
-    dest_addr.sin_port = htons(dest_port);
+	if(!dest_port.empty())
+		dest_addr.sin_port = htons(std::atoi(dest_port.c_str()));
     int code = ::connect( sfd, (struct sockaddr *)&dest_addr, sizeof(dest_addr) );
-    if( code )
+    if(code)
     {
         if( EINPROGRESS != errno )
         {
@@ -210,10 +217,11 @@ void CNetTcp::del_from_epoll( const int sfd )
     }
 }
 
-int CNetTcp::_connect( const std::string& dst_address, const uint16_t dst_port,
-                       const std::string& iface_addr, const std::string& iface_name, 
-                       const uint16_t iface_port = INADDR_ANY
-                    )
+int CNetTcp::_connect( const std::string& dst_address, 
+					   const std::string& dst_port,
+                       const std::string& iface_addr, 
+					   const std::string& iface_name, 
+                       const std::string& iface_port)
 {
     int sfd = create_tcp_socket();
     
@@ -221,33 +229,35 @@ int CNetTcp::_connect( const std::string& dst_address, const uint16_t dst_port,
     std::lock_guard<std::mutex> lk(m_connect_mutex);
     m_connect_socks.insert(sfd);
     }
-    try
-    {
-    bind_to_interface( sfd, iface_addr, iface_name, iface_port );
-    }
-    catch(...)
-    {}
+
+	bind_to_interface( sfd, iface_addr, iface_name, iface_port );
+
     add_out_to_epoll(sfd);
     create_data_thread();
-    connect_to_destination( sfd, dst_address, dst_port );
+    connect_to_destination(sfd, dst_address, dst_port);
 
     return sfd;
 }
 
-int CNetTcp::connect( const std::string& dst_address, const uint16_t dst_port )
+int CNetTcp::connect( const std::string& dst_address, 
+					  const std::string& dst_port)
 {
-    return _connect( dst_address, dst_port, std::string(), std::string() );
+    return _connect(dst_address, dst_port, std::string(), std::string(), std::string());
 }
 
-int CNetTcp::connect( const std::string& dst_address, const uint16_t dst_port,
-                      const std::string& iface_addr, const uint16_t iface_port
+int CNetTcp::connect( const std::string& dst_address, 
+					  const std::string& dst_port,
+                      const std::string& iface_addr, 
+					  const std::string& iface_port
                     )
 {
     return _connect( dst_address, dst_port, iface_addr, std::string(), iface_port );
 }
 
-int CNetTcp::connect( const std::string& dst_address, const uint16_t dst_port,
-                      const std::string& iface_addr, const uint16_t iface_port,
+int CNetTcp::connect( const std::string& dst_address, 
+					  const std::string& dst_port,
+                      const std::string& iface_addr, 
+					  const std::string& iface_port,
                       const std::string& iface_name = std::string()
                     )
 {
@@ -263,47 +273,47 @@ bool CNetTcp::send( const int& sock_id, const std::string& message )
 }
 
 void CNetTcp::_subscribe_on_new_connection( OnConnect connect_handle, 
-                                            const std::string &iface_addr, 
-                                            const std::string &iface_name, 
-                                            const uint16_t iface_port = INADDR_ANY )
+                                            const std::string& iface_addr, 
+                                            const std::string& iface_name, 
+                                            const std::string& iface_port)
 {
     m_connect_handle = connect_handle;
     m_lsfd = create_tcp_socket();
-    try
-    {
-    bind_to_interface( m_lsfd, iface_addr, iface_name, iface_port );
-    }
-    catch(...)
-    {}
-    if( listen( m_lsfd, LISTEN_BACKLOG ) == -1 )
-        throw std::string(strerror(errno));
+
+	bind_to_interface(m_lsfd, iface_addr, iface_name, iface_port);
+    
+    if(listen( m_lsfd, LISTEN_BACKLOG ) == -1)
+	{
+        throw std::string(std::string("listen() failed: \'") + std::string(strerror(errno)) + "\' m_lsfd: \'" + std::to_string(m_lsfd) + "\'");
+	}
+   
     add_in_to_epoll(m_lsfd);
     create_data_thread();
 }
 
-void CNetTcp::subscribe_on_new_connection( OnConnect connect_handle )
+void CNetTcp::subscribe_on_new_connection(OnConnect connect_handle)
 {   
-    _subscribe_on_new_connection( connect_handle, std::string(), std::string() );
+    _subscribe_on_new_connection(connect_handle, std::string(), std::string(), std::string());
 }
 
-void CNetTcp::subscribe_on_new_connection( OnConnect connect_handle, const uint16_t iface_port )
+void CNetTcp::subscribe_on_new_connection( OnConnect connect_handle, const std::string& iface_port )
 {
     _subscribe_on_new_connection( connect_handle, std::string(), std::string(), iface_port );
 }
 
 void CNetTcp::subscribe_on_new_connection( OnConnect connect_handle, 
-                                           const std::string &iface_addr, 
-                                           const uint16_t iface_port )
+                                           const std::string& iface_addr, 
+                                           const std::string& iface_port)
 {
     _subscribe_on_new_connection( connect_handle, iface_addr, std::string(), iface_port );
 }
 
 void CNetTcp::subscribe_on_new_connection( OnConnect connect_handle, 
-                                           const std::string &iface_addr, 
-                                           const std::string &iface_name, 
-                                           const uint16_t iface_port )
+                                           const std::string& iface_addr, 
+                                           const std::string& iface_name, 
+                                           const std::string& iface_port )
 {
-    _subscribe_on_new_connection( connect_handle, iface_addr, iface_name, iface_port );
+    _subscribe_on_new_connection(connect_handle, iface_addr, iface_name, iface_port);
 }
 
 void CNetTcp::subscribe_on_data( OnReceive receive_handle )
@@ -347,7 +357,7 @@ void CNetTcp::data_thread()
     while( m_data_thread_isrun )
     {   
         int n = epoll_wait( m_efd, events, MAXEVENTS, -1 );
-        for( int i = 0; i < n; i++ )
+        for(int i = 0; i < n; i++)
         {
             std::string str_event;
             ip_tools::epoll_events_to_str(events[i].events, str_event);   //print
@@ -423,7 +433,7 @@ void CNetTcp::_process_output_events( const struct epoll_event &evnt )
     }
 }
 
-void CNetTcp::_process_hup_events( const struct epoll_event &evnt )
+void CNetTcp::_process_hup_events(const struct epoll_event &evnt)
 {
     int cur_sock = evnt.data.fd;
     auto it = m_connect_socks.find(cur_sock);

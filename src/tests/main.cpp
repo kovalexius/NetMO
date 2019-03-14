@@ -30,7 +30,7 @@ int main()
                                                 {
                                                     std::cout << "new abonent = " << id_abonent << std::endl;
                                                 },
-                                                50023
+                                                "50023"
                                               );
     }
     catch(  const std::string &what )
@@ -50,7 +50,7 @@ int main()
     mmo::CNetTcp net_client;
     try
     {
-        int id = net_client.connect( std::string("127.0.0.1"), 50023 );
+        int id = net_client.connect( std::string("127.0.0.1"), "50023");
         
         std::cout << "connect client id = " << id << std::endl;
         //sleep(1);

@@ -41,15 +41,18 @@ namespace mmo
 
         // Connect to host, you may connect to any hosts, any times
         // through any interface
-        int connect( const std::string& dst_address, const uint16_t dst_port );
+        int connect( const std::string& dst_address,
+					 const std::string& dst_port);
+		
         int connect( const std::string& dst_address, 
-                     const uint16_t dst_port,
+                     const std::string& dst_port,
                      const std::string& iface_addr, 
-                     const uint16_t iface_port );
+                     const std::string& iface_port );
+		
         int connect( const std::string& dst_address, 
-                     const uint16_t dst_port,
+                     const std::string& dst_port,
                      const std::string& iface_addr, 
-                     const uint16_t iface_port,
+                     const std::string& iface_port,
                      const std::string& iface_name );
 
         // Disconnect from host
@@ -73,15 +76,19 @@ namespace mmo
 
         // Subscribe on new connection - start listening as server
         // return socket id as integer type
-        void subscribe_on_new_connection( OnConnect connect_handle );
-        void subscribe_on_new_connection( OnConnect connect_handle, const uint16_t iface_port );
-        void subscribe_on_new_connection( OnConnect connect_handle, 
-                                          const std::string &iface_addr, 
-                                          const uint16_t iface_port );
-        void subscribe_on_new_connection( OnConnect connect_handle, 
-                                          const std::string &iface_addr, 
-                                          const std::string &iface_name, 
-                                          const uint16_t iface_port );
+        void subscribe_on_new_connection(OnConnect connect_handle);
+        
+		void subscribe_on_new_connection(OnConnect connect_handle,
+			const std::string& iface_port);
+		
+        void subscribe_on_new_connection(OnConnect connect_handle,
+			const std::string& iface_addr,
+			const std::string& iface_port);
+		
+        void subscribe_on_new_connection(OnConnect connect_handle, 
+			const std::string& iface_addr, 
+			const std::string& iface_name, 
+			const std::string& iface_port);
 
         // Set to blocking or unblocking mode, while blocking
         // doesn't called any subscribers
@@ -90,27 +97,27 @@ namespace mmo
         void unblock();
 
     private:
-        int _connect(  const std::string& dst_address, 
-                        const uint16_t dst_port,
-                        const std::string& iface_addr, 
-                        const std::string& iface_name,
-                        const uint16_t iface_port
-                     );
-        void _subscribe_on_new_connection( OnConnect connect_handle, 
-                                          const std::string &iface_addr, 
-                                          const std::string &iface_name, 
-                                          const uint16_t iface_port );
+        int _connect(const std::string& dst_address, 
+					 const std::string& dst_port,
+                     const std::string& iface_addr, 
+                     const std::string& iface_name,
+                     const std::string& iface_port);
+
+		void _subscribe_on_new_connection(OnConnect connect_handle, 
+                                          const std::string& iface_addr, 
+                                          const std::string& iface_name, 
+                                          const std::string& iface_port);
         
-        void _process_input_events( const struct epoll_event &evnt );
-        void _process_output_events( const struct epoll_event &evnt );
-        void _process_hup_events( const struct epoll_event &evnt );
+        void _process_input_events(const struct epoll_event &evnt );
+        void _process_output_events(const struct epoll_event &evnt );
+        void _process_hup_events(const struct epoll_event &evnt );
         void create_data_thread();
         void data_thread();
         
-        void add_in_to_epoll( const int sfd );
-        void add_out_to_epoll( const int sfd );
-        void mod_in_epoll( const int sfd );
-        void del_from_epoll( const int sfd );
+        void add_in_to_epoll(const int sfd);
+        void add_out_to_epoll(const int sfd);
+        void mod_in_epoll(const int sfd);
+        void del_from_epoll(const int sfd);
         
         // epoll descriptor for signaling data receive
         int m_efd;
