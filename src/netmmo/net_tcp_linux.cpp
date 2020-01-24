@@ -80,7 +80,7 @@ static inline void bind_to_interface( const int sfd,
     {
         res_devbind = ::setsockopt( sfd, SOL_SOCKET, SO_BINDTODEVICE,  iface_name.data(), iface_name.size() );
         if( res_devbind != 0 )      
-            std::cout << "Failed to set SO_BINDTODEVICE sockopt. errno = " << errno << std::endl;
+            std::cout << strerror(errno) << std::endl;
     }
     
     bind( sfd, bind_addr );
@@ -106,14 +106,6 @@ static inline void connect_to_destination(const int sfd, const std::string& dest
             ::close(sfd);
             throw std::string(strerror(errno));
         }
-        else
-        {
-            std::cout << "Connect in progress" << std::endl;
-        }
-    }
-    else
-    {
-        std::cout << "Connect success!" << std::endl;
     }
 }
 
@@ -146,11 +138,13 @@ CNetTcp::CNetTcp() : m_data_thread_isrun(false),
 
 CNetTcp::~CNetTcp()
 {
+    shutdown(m_efd, SHUT_RDWR);
     if( m_data_thread )
     {
         m_data_thread_isrun.store( false );
-        char c;
-        ::write( m_spfd, &c, sizeof(c) );       // sending self-pipe event to exit thread
+        //char c;
+        //::write( m_spfd, &c, sizeof(c) );       // sending self-pipe event to exit thread
+        std::cout << "destructor()" << std::endl;
         m_data_thread->join();
         delete m_data_thread;
     }
@@ -221,12 +215,14 @@ int CNetTcp::_connect( const std::string& dst_address, const uint16_t dst_port,
     std::lock_guard<std::mutex> lk(m_connect_mutex);
     m_connect_socks.insert(sfd);
     }
+    
     try
     {
-    bind_to_interface( sfd, iface_addr, iface_name, iface_port );
+        bind_to_interface( sfd, iface_addr, iface_name, iface_port );
     }
     catch(...)
     {}
+    
     add_out_to_epoll(sfd);
     create_data_thread();
     connect_to_destination( sfd, dst_address, dst_port );
@@ -335,8 +331,7 @@ void CNetTcp::create_data_thread()
     if( !m_data_thread_isrun.load() )
     {
         m_data_thread_isrun.store( true );
-        if( !m_data_thread )
-            m_data_thread = new std::thread( invoke<CNetTcp, &CNetTcp::data_thread>, this );
+        m_data_thread = std::thread( &CNetTcp::data_thread, this );
     }
 }
 
@@ -351,7 +346,7 @@ void CNetTcp::data_thread()
         {
             std::string str_event;
             ip_tools::epoll_events_to_str(events[i].events, str_event);   //print
-            std::cout << "events: " << str_event << std::endl;
+            //std::cout << "events: " << str_event << std::endl;
             
             if(events[i].data.fd == m_spfd)        // self-pipe event
                 break;
@@ -366,6 +361,8 @@ void CNetTcp::data_thread()
             if(events[i].events & EPOLLOUT )        // ready to write or connect was established
                 _process_output_events(events[i]);
         }
+        sleep(1);
+        std::cout << "thread is run: " << m_data_thread_isrun << std::endl;
     }
     free( events );
 }

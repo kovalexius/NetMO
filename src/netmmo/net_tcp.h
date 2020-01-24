@@ -116,7 +116,7 @@ namespace mmo
         int m_efd;
         
         std::atomic<bool> m_data_thread_isrun;
-        std::thread *m_data_thread;
+        std::thread m_data_thread;
         
 
         std::unordered_set<int> m_data_socks;
