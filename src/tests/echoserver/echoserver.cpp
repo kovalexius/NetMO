@@ -20,7 +20,7 @@ int main(int argc, char* argv[])
     int opt;
     std::string eth_name;
     std::string eth_addr;
-    int32_t port = 23;
+    std::string port;
     
     while( (opt = getopt(argc, argv, "a:i:p:h")) != -1 )
     {
@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
                 eth_addr = std::string(optarg);
                 break;
             case 'p':
-                port = atoi(optarg);
+                port = std::string(optarg);
                 break;
             case 'h':  
             default:
@@ -42,41 +42,48 @@ int main(int argc, char* argv[])
         }
     }
     
-    std::cout << "port=" << port << " eth_name=" << eth_name << " eth_addr=" << eth_addr << std::endl;
-    
     mmo::CNetTcp net_server;
     try
-    {
+	{
         net_server.subscribe_on_error(
                                         [&net_server] (mmo::CONNECT_ERROR error, const int id)
                                         {
                                             std::cout << "connect was hanged up by peer: " << id << std::endl;
                                         }
         );
-        net_server.subscribe_on_new_connection( [&net_server]( const int &id_abonent ) 
+	}
+    catch(const std::string &what)
+    {
+        std::cout << "Failed while subscribing_on_error: " << what << std::endl;
+    }
+    
+    mmo::OnReceive onReceiveHandle = [&net_server](const int id, const std::string& message)
+    {
+        std::cout << "message: " << message << " from abonent: " << id << std::endl;
+       
+        try
+        {
+            net_server.send(id, message);
+        }
+        catch(const std::string &what)
+        {
+            std::cout << what <<std::endl;
+        }
+    };
+		
+	try
+	{
+        net_server.subscribe_on_new_connection( [&net_server, &onReceiveHandle]( const int &id_abonent ) 
                                                 {
                                                     std::cout << "new abonent = " << id_abonent << std::endl;
-                                                    mmo::OnReceive handle = [&]( const int id, const std::string& message )
-                                                                            {
-                                                                                std::cout << "message: " << message << " from abonent: " << id << std::endl;
-                                                                               
-                                                                                try
-                                                                                {
-                                                                                    net_server.send( id, message );
-                                                                                }
-                                                                                catch(const std::string &what)
-                                                                                {
-                                                                                    std::cout << what <<std::endl;
-                                                                                }
-                                                                            };
-                                                    net_server.subscribe_on_data( handle, id_abonent );
                                                     try
                                                     {
+														net_server.subscribe_on_data(onReceiveHandle, id_abonent);
                                                         //net_server.send( id_abonent, std::string("abc_server") );
                                                     }
                                                     catch( const std::string &what )
                                                     {
-                                                        std::cout << what << std::endl;
+                                                        std::cout << "Failed while subscribing on data: " << what << std::endl;
                                                     }
                                                 },
                                                 eth_addr,
@@ -85,10 +92,12 @@ int main(int argc, char* argv[])
                                               );
         
     }
-    catch(  const std::string &what )
+    catch(const std::string &what)
     {
-        std::cout << what << std::endl;
+        std::cout << "Failed while subscribing on connection: " << what << std::endl;
     }
+    
+    
     
     std::cin.get();
 }
