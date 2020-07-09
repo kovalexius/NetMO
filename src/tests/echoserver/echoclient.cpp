@@ -9,7 +9,7 @@
 
 void usage()
 {
-    std::cout << "usage: echoserver [ -p interface_port [[-i interface_name] [-a interface_address]] [-d dst_port -t dst_addr]]" << std::endl <<
+    std::cout << "usage: echoserver [ -p interface_port [[-i interface_name] [-a interface_address]] [-d dst_port -t dst_addr]]" 
                  "    interface_port - tcp port which echo server will listen" << std::endl <<
                  "    interface_name - string name of net device which echo server will listen" << std::endl <<
                  "    interface_address - ip address of net device which echo server will listen" << std::endl <<
