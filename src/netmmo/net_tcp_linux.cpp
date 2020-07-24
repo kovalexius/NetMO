@@ -121,11 +121,7 @@ static inline void connect_to_destination(const int sfd, const std::string& dest
 ////////////////// class CNetTcp ///////////////////
 ////////////////////////////////////////////////////
 
-CNetTcp::CNetTcp() : m_data_thread_isrun(false),
-                     m_data_thread(nullptr),
-                     m_connect_handle(nullptr),
-                     m_error_handle(nullptr),
-                     m_receive_handle(nullptr)
+CNetTcp::CNetTcp() : m_data_thread_isrun(false)
 {
     m_efd = epoll_create(1);
     
@@ -146,24 +142,23 @@ CNetTcp::CNetTcp() : m_data_thread_isrun(false),
 CNetTcp::~CNetTcp()
 {
     shutdown(m_efd, SHUT_RDWR);
-    if( m_data_thread )
+    m_data_thread_isrun.store( false );
+    if(m_data_thread.joinable())
     {
-        m_data_thread_isrun.store( false );
         //char c;
-        //::write( m_spfd, &c, sizeof(c) );       // sending self-pipe event to exit thread
+        //write( m_spfd, &c, sizeof(c) );       // sending self-pipe event to exit thread
         std::cout << "destructor()" << std::endl;
-        m_data_thread->join();
-        delete m_data_thread;
+        m_data_thread.join();
     }
     
-    ::close(m_efd);
-    ::close(m_lsfd);
-    ::close(m_spfd);
+    close(m_efd);
+    close(m_lsfd);
+    close(m_spfd);
     
     for( auto it = m_connect_socks.begin(); it != m_connect_socks.end(); it++ )
-        ::close( *it );
+        close(*it);
     for( auto it = m_data_socks.begin(); it != m_data_socks.end(); it++ )
-        ::close( *it );
+        close(*it);
 }
 
 void CNetTcp::add_in_to_epoll( const int sfd )
